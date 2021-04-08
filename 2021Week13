@@ -1,0 +1,40 @@
+import pandas as pd
+
+pl_15_16 = pd.read_csv('pl_15-16.csv')
+pl_16_17 = pd.read_csv('pl_16-17.csv')
+pl_17_18 = pd.read_csv('pl_17-18.csv')
+pl_18_19 = pd.read_csv('pl_18-19.csv')
+pl_19_20 = pd.read_csv('pl_19-20.csv')
+
+df = pd.concat([pl_16_17, pl_17_18, pl_18_19, pl_19_20])
+
+df = df[(df['Position'] != 'Goalkeeper') & (df['Appearances'] > 0)].rename(columns={'Goals':'Total Goals Scored'})
+
+df[['Freekicks scored', 'Penalties scored']] = df[['Freekicks scored', 'Penalties scored']].fillna(0).astype('int64')
+
+df['Open Play Goals'] = df['Total Goals Scored'] - df['Freekicks scored'] - df['Penalties scored']
+
+df = df.groupby(['Name', 'Position'], as_index=False).agg({'Appearances':'sum', 'Open Play Goals':'sum',
+                                                          'Total Goals Scored':'sum', 'Headed goals':'sum',
+                                                          'Goals with right foot':'sum', 'Goals with left foot':'sum'})
+
+df[['Headed goals', 'Goals with right foot', 'Goals with left foot']] = df[['Headed goals', 'Goals with right foot',
+                                                                            'Goals with left foot']].astype('int64')
+
+df['Open Play Goals / Game'] = (df['Open Play Goals'] / df['Appearances']).astype('float')
+
+output1 = df.copy()
+output1['Rank'] = output1['Open Play Goals'].rank(method='min', ascending=False).astype('int64')
+output1 = output1[output1['Rank']<=20][['Name','Rank', 'Position','Open Play Goals','Goals with right foot','Goals with left foot',
+                                        'Appearances','Total Goals Scored','Open Play Goals / Game',
+                                        'Headed goals']].sort_values(by='Rank')
+
+output2 = df.copy()
+output2['Rank'] = output2.groupby('Position')['Open Play Goals'].rank(method='min', ascending=False).astype('int64')
+output2 = output2[output2['Rank']<=20][['Name','Rank', 'Position','Open Play Goals','Goals with right foot','Goals with left foot',
+                                        'Appearances','Total Goals Scored','Open Play Goals / Game',
+                                        'Headed goals']].sort_values(by=['Position', 'Rank'])
+
+answer = (output1[output1['Position'] != 'Forward']['Name'])
+
+print(f'The only player in the top20 who is not a Forward is {answer}.')
