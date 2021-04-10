@@ -1,2 +1,2 @@
 # PreppinData
-My solutions for the PreppinData chellenges
+My solutions for the PreppinData challenges
