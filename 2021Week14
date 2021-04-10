@@ -1,133 +1,100 @@
-{
- "cells": [
-  {
-   "cell_type": "code",
-   "execution_count": 250,
-   "metadata": {},
-   "outputs": [],
-   "source": [
-    "import pandas as pd\n",
-    "import numpy as np\n",
-    "\n",
-    "#reading input data\n",
-    "\n",
-    "passenger_list = pd.read_excel('Week 14 - Input.xlsx', sheet_name='Passenger List', usecols=[0,1,2,3,4])\n",
-    "seat_list = pd.read_excel('Week 14 - Input.xlsx', sheet_name='SeatList')\n",
-    "flight_details = pd.read_excel('Week 14 - Input.xlsx', sheet_name='FlightDetails')\n",
-    "plane_details = pd.read_excel('Week 14 - Input.xlsx', sheet_name='PlaneDetails')\n",
-    "\n",
-    "#parsing flight details dataframe\n",
-    "\n",
-    "flight_details[['FlightID','DepAir','ArrAir','DepDate','DepTime']] = flight_details['[FlightID|DepAir|ArrAir|DepDate|DepTime]'].str.split('|', expand=True)\n",
-    "flight_details['FlightID'] = flight_details['FlightID'].str.replace('[', '')\n",
-    "flight_details['DepTime'] = flight_details['DepTime'].str.replace(']', '')\n",
-    "flight_details.drop(labels='[FlightID|DepAir|ArrAir|DepDate|DepTime]',axis=1,inplace=True)\n",
-    "\n",
-    "#Assign a label for where each seat is located.\n",
-    "#They are assigned as follows:\n",
-    "#A & F - Window Seats\n",
-    "#B & E - Middle Seats\n",
-    "#C & D - Aisle Seats \n",
-    "\n",
-    "seat_list = pd.melt(seat_list, id_vars=['Row'], var_name='seat_position', value_name='passenger_number')\n",
-    "\n",
-    "position_dict = {'A':'Window Seats','F':'Window Seats',\n",
-    "                'B':'Middle Seats', 'E':'Middle Seats',\n",
-    "                'C':'Aisle Seats', 'D':'Aisle Seats'}\n",
-    "\n",
-    "seat_list['seat_types'] = seat_list['seat_position'].map(position_dict)\n",
-    "\n",
-    "#Combine the Seat List and Passenger List tables.\n",
-    "\n",
-    "pass_seat_list = passenger_list.merge(seat_list, on='passenger_number')\n",
-    "\n",
-    "#Calculate the time of day for each flight. (Hint)\n",
-    "#They are assigned as follows: \n",
-    "#Morning - Before 12:00 \n",
-    "#Afternoon - Between 12:00 - 18:00\n",
-    "#Evening - After 18:00\n",
-    "\n",
-    "flight_details['DepHour'] = flight_details['DepTime'].apply(lambda x: x[0:2]).astype(int)\n",
-    "\n",
-    "flight_details.loc[flight_details['DepHour'] < 12, 'time of day'] = 'Morning'\n",
-    "flight_details.loc[((flight_details['DepHour'] > 11) & (flight_details['DepHour'] < 18)), 'time of day'] = 'Aternoon'\n",
-    "flight_details.loc[flight_details['DepHour'] > 17, 'time of day'] = 'Evening'\n",
-    "\n",
-    "#Join the Flight Details & Plane Details to the Passenger & Seat tables. \n",
-    "#We should be able to identify what rows are Business or Economy Class for each flight.\n",
-    "\n",
-    "plane_details[['BC_start','BC_end']] = plane_details['Business Class'].str.split('-', expand=True).astype(int)\n",
-    "\n",
-    "passanger_df = pd.merge(pass_seat_list, plane_details, left_on='flight_number', right_on='FlightNo.', how='left')\n",
-    "\n",
-    "passanger_df.loc[passanger_df['Row'] > passanger_df['BC_end'], 'class'] = 'Economy'\n",
-    "passanger_df.loc[passanger_df['Row'] < passanger_df['BC_end'], 'class'] = 'Business'\n",
-    "\n",
-    "flight_details['FlightID'] = flight_details['FlightID'].astype(int)\n",
-    "passenger_df = pd.merge(passanger_df, flight_details, left_on='FlightNo.', right_on='FlightID', how='left')\n",
-    "\n",
-    "#Answer the following questions: \n",
-    "#What time of day were the most purchases made? We want to take a look at the average for the flights within each time period. \n",
-    "\n",
-    "output1 = passenger_df[passenger_df['class'] == 'Economy'][['time of day', 'purchase_amount', 'flight_number']]\n",
-    "output1 = output1.groupby(['time of day','flight_number'], as_index=False)['purchase_amount'].agg('sum')\n",
-    "output1 = output1.groupby('time of day', as_index=False)['purchase_amount'].mean().round(2)\n",
-    "output1['rank'] = output1['purchase_amount'].rank(ascending=False).astype(int)\n",
-    "output1.sort_values(by='rank', inplace=True)\n",
-    "output1 = output1[['rank', 'time of day', 'purchase_amount']].rename(columns={'rank':'Rank1',\n",
-    "                                                                              'time of day':'Depart Time of Day',\n",
-    "                                                                              'purchase_amount':'Avg per Flight'})\n",
-    "output1.set_index('Rank1', inplace=True)\n",
-    "\n",
-    "#What seat position had the highest purchase amount? Is the aisle seat the highest earner because it's closest to the trolley?\n",
-    "\n",
-    "output2 = passenger_df[passenger_df['class'] == 'Economy'][['seat_types', 'purchase_amount']]\n",
-    "output2 = output2.groupby(['seat_types'], as_index=False)['purchase_amount'].agg('sum')\n",
-    "output2 = output2.groupby('seat_types', as_index=False)['purchase_amount'].mean().round(2)\n",
-    "output2['rank'] = output2['purchase_amount'].rank(ascending=False).astype(int)\n",
-    "output2.sort_values(by='rank', inplace=True)\n",
-    "output2 = output2[['rank', 'seat_types', 'purchase_amount']].rename(columns={'rank':'Rank1',\n",
-    "                                                                              'seat_types':'Seat Position',\n",
-    "                                                                              'purchase_amount':'Purchase Amount'})\n",
-    "output2.set_index('Rank1', inplace=True)\n",
-    "\n",
-    "#As Business Class purchases are free, how much is this costing us? \n",
-    "\n",
-    "output3 = passenger_df[['class', 'purchase_amount']]\n",
-    "output3 = output3.groupby('class', as_index=False)['purchase_amount'].agg('sum').round(2)\n",
-    "output3['rank'] = output3['purchase_amount'].rank(ascending=False).astype(int)\n",
-    "output3.sort_values(by='rank', inplace=True)\n",
-    "output3 = output3[['rank', 'class', 'purchase_amount']].rename(columns={'rank':'Rank1',\n",
-    "                                                                        'class':'Business Class',\n",
-    "                                                                        'purchase_amount':'Purchase Amount'})\n",
-    "output3.set_index('Rank1', inplace=True)\n",
-    "\n",
-    "with pd.ExcelWriter('2021Week14 - Output.xlsx') as writer:  \n",
-    "    output1.to_excel(writer, sheet_name='output1')\n",
-    "    output2.to_excel(writer, sheet_name='output2')\n",
-    "    output3.to_excel(writer, sheet_name='output3')"
-   ]
-  }
- ],
- "metadata": {
-  "kernelspec": {
-   "display_name": "Python 3",
-   "language": "python",
-   "name": "python3"
-  },
-  "language_info": {
-   "codemirror_mode": {
-    "name": "ipython",
-    "version": 3
-   },
-   "file_extension": ".py",
-   "mimetype": "text/x-python",
-   "name": "python",
-   "nbconvert_exporter": "python",
-   "pygments_lexer": "ipython3",
-   "version": "3.7.3"
-  }
- },
- "nbformat": 4,
- "nbformat_minor": 2
-}
+import pandas as pd
+import numpy as np
+
+#reading input data
+
+passenger_list = pd.read_excel('Week 14 - Input.xlsx', sheet_name='Passenger List', usecols=[0,1,2,3,4])
+seat_list = pd.read_excel('Week 14 - Input.xlsx', sheet_name='SeatList')
+flight_details = pd.read_excel('Week 14 - Input.xlsx', sheet_name='FlightDetails')
+plane_details = pd.read_excel('Week 14 - Input.xlsx', sheet_name='PlaneDetails')
+
+#parsing flight details dataframe
+
+flight_details[['FlightID','DepAir','ArrAir','DepDate','DepTime']] = flight_details['[FlightID|DepAir|ArrAir|DepDate|DepTime]'].str.split('|', expand=True)
+flight_details['FlightID'] = flight_details['FlightID'].str.replace('[', '')
+flight_details['DepTime'] = flight_details['DepTime'].str.replace(']', '')
+flight_details.drop(labels='[FlightID|DepAir|ArrAir|DepDate|DepTime]',axis=1,inplace=True)
+
+#Assign a label for where each seat is located.
+#They are assigned as follows:
+#A & F - Window Seats
+#B & E - Middle Seats
+#C & D - Aisle Seats 
+
+seat_list = pd.melt(seat_list, id_vars=['Row'], var_name='seat_position', value_name='passenger_number')
+
+position_dict = {'A':'Window Seats','F':'Window Seats',
+                'B':'Middle Seats', 'E':'Middle Seats',
+                'C':'Aisle Seats', 'D':'Aisle Seats'}
+
+seat_list['seat_types'] = seat_list['seat_position'].map(position_dict)
+
+#Combine the Seat List and Passenger List tables.
+
+pass_seat_list = passenger_list.merge(seat_list, on='passenger_number')
+
+#Calculate the time of day for each flight. (Hint)
+#They are assigned as follows: 
+#Morning - Before 12:00 
+#Afternoon - Between 12:00 - 18:00
+#Evening - After 18:00
+
+flight_details['DepHour'] = flight_details['DepTime'].apply(lambda x: x[0:2]).astype(int)
+
+flight_details.loc[flight_details['DepHour'] < 12, 'time of day'] = 'Morning'
+flight_details.loc[((flight_details['DepHour'] > 11) & (flight_details['DepHour'] < 18)), 'time of day'] = 'Aternoon'
+flight_details.loc[flight_details['DepHour'] > 17, 'time of day'] = 'Evening'
+
+#Join the Flight Details & Plane Details to the Passenger & Seat tables. 
+#We should be able to identify what rows are Business or Economy Class for each flight.
+
+plane_details[['BC_start','BC_end']] = plane_details['Business Class'].str.split('-', expand=True).astype(int)
+
+passanger_df = pd.merge(pass_seat_list, plane_details, left_on='flight_number', right_on='FlightNo.', how='left')
+
+passanger_df.loc[passanger_df['Row'] > passanger_df['BC_end'], 'class'] = 'Economy'
+passanger_df.loc[passanger_df['Row'] < passanger_df['BC_end'], 'class'] = 'Business'
+
+flight_details['FlightID'] = flight_details['FlightID'].astype(int)
+passenger_df = pd.merge(passanger_df, flight_details, left_on='FlightNo.', right_on='FlightID', how='left')
+
+#Answer the following questions: 
+#What time of day were the most purchases made? We want to take a look at the average for the flights within each time period. 
+
+output1 = passenger_df[passenger_df['class'] == 'Economy'][['time of day', 'purchase_amount', 'flight_number']]
+output1 = output1.groupby(['time of day','flight_number'], as_index=False)['purchase_amount'].agg('sum')
+output1 = output1.groupby('time of day', as_index=False)['purchase_amount'].mean().round(2)
+output1['rank'] = output1['purchase_amount'].rank(ascending=False).astype(int)
+output1.sort_values(by='rank', inplace=True)
+output1 = output1[['rank', 'time of day', 'purchase_amount']].rename(columns={'rank':'Rank1',
+                                                                              'time of day':'Depart Time of Day',
+                                                                              'purchase_amount':'Avg per Flight'})
+output1.set_index('Rank1', inplace=True)
+
+#What seat position had the highest purchase amount? Is the aisle seat the highest earner because it's closest to the trolley?
+
+output2 = passenger_df[passenger_df['class'] == 'Economy'][['seat_types', 'purchase_amount']]
+output2 = output2.groupby(['seat_types'], as_index=False)['purchase_amount'].agg('sum')
+output2 = output2.groupby('seat_types', as_index=False)['purchase_amount'].mean().round(2)
+output2['rank'] = output2['purchase_amount'].rank(ascending=False).astype(int)
+output2.sort_values(by='rank', inplace=True)
+output2 = output2[['rank', 'seat_types', 'purchase_amount']].rename(columns={'rank':'Rank1',
+                                                                              'seat_types':'Seat Position',
+                                                                              'purchase_amount':'Purchase Amount'})
+output2.set_index('Rank1', inplace=True)
+
+#As Business Class purchases are free, how much is this costing us? 
+
+output3 = passenger_df[['class', 'purchase_amount']]
+output3 = output3.groupby('class', as_index=False)['purchase_amount'].agg('sum').round(2)
+output3['rank'] = output3['purchase_amount'].rank(ascending=False).astype(int)
+output3.sort_values(by='rank', inplace=True)
+output3 = output3[['rank', 'class', 'purchase_amount']].rename(columns={'rank':'Rank1',
+                                                                        'class':'Business Class',
+                                                                        'purchase_amount':'Purchase Amount'})
+output3.set_index('Rank1', inplace=True)
+
+with pd.ExcelWriter('2021Week14 - Output.xlsx') as writer:  
+    output1.to_excel(writer, sheet_name='output1')
+    output2.to_excel(writer, sheet_name='output2')
+    output3.to_excel(writer, sheet_name='output3')
