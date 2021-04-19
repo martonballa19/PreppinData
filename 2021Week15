@@ -1,0 +1,80 @@
+import pandas as pd
+import numpy as np
+import warnings
+warnings.filterwarnings("ignore")
+
+menu = pd.read_excel('Menu and Orders.xlsx', sheet_name='MENU')
+orders = pd.read_excel('Menu and Orders.xlsx', sheet_name='Order')
+
+#Modify the structure of the Menu table so we can have one column for 
+#the Type(pizza, pasta, house plate), the name of the plate, ID, and Price
+
+pizzas = menu[['Pizza', 'Pizza Price ', 'Pizza ID']]
+pastas = menu[['Pasta', 'Pasta Price', 'Pasta ID']]
+plates = menu[['House Plates', 'House Plates Prices', 'House Plates ID']]
+
+pizzas['Type'] = 'Pizza'
+pastas['Type'] = 'Pasta'
+plates['Type'] = 'House Plate'
+
+pizzas = pizzas.rename(columns= {'Pizza':'Name', 'Pizza Price ':'Price', 'Pizza ID':'ID'})
+plates = plates.rename(columns= {'House Plates':'Name', 'House Plates Prices':'Price', 'House Plates ID':'ID'})
+pastas = pastas.rename(columns= {'Pasta':'Name', 'Pasta Price':'Price', 'Pasta ID':'ID'})
+
+menu = pd.concat([pizzas,pastas,plates]).dropna()
+menu['ID'] = menu['ID'].astype(int)
+
+#Modify the structure of the Orders table to have each item ID in a different row
+
+orders['Order'] = orders['Order'].astype(str)
+rest_of_ids = orders['Order'].str.split('-', expand=True)
+first_id = orders['Order'].apply(lambda x: x.split('-')[0])
+
+orders['Order1'] = first_id
+orders['Order2'] = rest_of_ids[1]
+orders['Order3'] = rest_of_ids[2]
+orders['Order4'] = rest_of_ids[3]
+
+orders.drop('Order', axis=1, inplace=True)
+
+orders_melted = pd.melt(orders, id_vars=['Customer Name', 'Order Date'], value_vars=['Order1', 'Order2', 'Order3', 'Order4'])
+
+orders = orders_melted.drop('variable', axis=1).rename(columns={'value':'ID'}).dropna()
+
+orders['ID'] = orders['ID'].astype(int)
+
+#Join both tables
+
+df = menu.merge(orders, on='ID')
+
+# On Monday's we offer a 50% discount on all items. Recalculate the prices to reflect this
+
+df['Weekday'] = df['Order Date'].dt.dayofweek
+
+weekday_dict = {0:'Monday',
+                1:'Tuesday',
+                2:'Wednesday',
+                3:'Thursday',
+                4:'Friday',
+                5:'Saturday',
+                6:'Sunday'
+                }
+
+df['Day of Week'] = df['Weekday'].map(weekday_dict)
+
+df.drop('Weekday', axis=1, inplace=True)
+
+df['Price'] = np.where(df['Day of Week'] == 'Monday', df['Price']*.5, df['Price'])
+
+# For Output 1, we want to calculate the total money for each day of the week
+
+output1 = df.groupby('Day of Week', as_index=False)['Price'].agg('sum')
+output1 = output1.sort_values(by='Price', ascending=False)
+
+# For Output 2, we want to reward the customer who has made the most orders for their loyalty. 
+#Work out which customer has ordered the most single items.
+
+output2 = df[['Customer Name', 'ID']]
+output2 = output2.groupby('Customer Name', as_index=False).agg('count')
+output2 = output2.sort_values(by='ID', ascending=False)
+output2 = output2.head(1).rename(columns={'ID':'Count Items'})
