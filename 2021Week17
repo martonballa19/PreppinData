@@ -1,0 +1,45 @@
+import pandas as pd
+import numpy as np
+
+df = pd.read_excel('Preppin Data Challenge.xlsx')
+
+#Remove the ‘Totals’ Rows
+df = df[df['Name, Age, Area of Work'].notnull()]
+
+#Pivot Dates to rows and rename fields 'Date' and 'Hours'
+df = pd.melt(df, id_vars=['Name, Age, Area of Work', 'Project'], var_name='Date', value_name='Hours')
+
+#Split the ‘Name, Age, Area of Work’ field into 3 Fields and Rename
+df[['Name', 'x']] = df['Name, Age, Area of Work'].str.split(',', expand=True)
+df[['Age', 'Area of Work']] = df['x'].str.split(':', expand=True)
+df.drop(columns=['Name, Age, Area of Work', 'x'], inplace=True)
+
+#Remove unnecessary fields & the row where Dan was on Annual Leave
+df.dropna(inplace=True)
+df = df[df['Hours'] != 'Annual Leave']
+
+df['Hours'] = df['Hours'].astype(float)
+
+#Total up the number of hours spent on each area of work for each date by each employee.
+df = df.groupby(['Name', 'Area of Work', 'Date'], as_index=False)['Hours'].agg('sum')
+
+#Work out the avg number of hours per day worked by each employee
+total_hours = df.groupby(['Name'],as_index=False)['Hours'].agg('sum')
+days_worked = df.groupby('Name', as_index=False)['Date'].agg('nunique')
+total_hours['Days'] = days_worked
+total_hours['Avg Number of Hours worked per day'] = total_hours['Hours'] / total_hours['Days']
+total_hours['Avg Number of Hours worked per day'] = total_hours['Avg Number of Hours worked per day'].round(2)
+
+#Work out what % of their day (not including Chats) was spend on Client work
+df = df[df['Area of Work'] != ' Chats']
+hours_worked = df.groupby(['Name', 'Area of Work'], as_index=False)['Hours'].agg('sum')
+total_hours_worked = df.groupby(['Name'], as_index=False)['Hours'].agg('sum')
+totals = total_hours_worked.merge(hours_worked, on='Name')
+totals = totals[totals['Area of Work'] == ' Client']
+totals['% of Total'] = (totals['Hours_y'] / totals['Hours_x']*100).astype(int)
+
+#Create final output
+output = totals.merge(total_hours, on='Name')
+output = output[['Name', 'Area of Work', '% of Total', 'Avg Number of Hours worked per day']]
+
+output.to_excel('2021W17 Output.xlsx', index=False)
