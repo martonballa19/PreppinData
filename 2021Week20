@@ -1,0 +1,55 @@
+#challenge url: https://preppindata.blogspot.com/2021/05/2021-week-20-controlling-complaints.html
+
+import pandas as pd
+import numpy as np
+
+df = pd.read_csv('Prep Air Complaints - Complaints per Day.csv')
+
+#Create the mean and standard deviation for each Week
+weekly_stats = df.groupby(['Week'], as_index=False)['Complaints'].agg(['mean','std'])
+
+#Create the following calculations for each of 1, 2 and 3 standard deviations:
+# - The Upper Control Limit (mean+(n*standard deviation))
+# - The Lower Control Limit (mean-(n*standard deviation))
+# - Variation (Upper Control Limit - Lower Control Limit)
+
+def stds(n, df):
+    df[f'Upper Control Limit ({n}std)'] = df['mean']+(n*df['std'])
+    df[f'Lower Control Limit ({n}std)'] = df['mean']-(n*df['std'])
+    df[f'Variation ({n}std)'] = df[f'Upper Control Limit ({n}std)'] - df[f'Lower Control Limit ({n}std)']
+    
+for _ in range(1,4):
+    stds(_, weekly_stats)
+
+#Join the original data set back on to these results    
+complaints = weekly_stats.merge(df, on='Week')
+
+#Assess whether each of the complaint values for each Department, Week and Date is within or outside of the control limits
+def outsiders(n, df):
+    df.loc[(df['Complaints'] > df[f'Upper Control Limit ({n}std)']) |
+               (df['Complaints'] < df[f'Lower Control Limit ({n}std)']), f'Outlier? {n}std'] = 'Outside'
+    df.loc[(df['Complaints'] < df[f'Upper Control Limit ({n}std)']) &
+               (df['Complaints'] > df[f'Lower Control Limit ({n}std)']), f'Outlier? {n}std'] = 'Normal'
+    
+for _ in range(1,4):
+    outsiders(_, complaints)
+    
+#Output only Outliers
+outliers_1std = complaints[complaints['Outlier? 1std'] == 'Outside']
+outliers_2std = complaints[complaints['Outlier? 2std'] == 'Outside']
+outliers_3std = complaints[complaints['Outlier? 3std'] == 'Outside']
+
+#Produce a separate output worksheet (or csv) for 1, 2 or 3 standard deviations
+#and remove the irrelevant fields for that output.
+
+outliers_1std = outliers_1std[['Week', 'mean', 'std', 'Upper Control Limit (1std)', 'Lower Control Limit (1std)',
+                               'Variation (1std)', 'Date', 'Complaints', 'Department', 'Outlier? 1std']]
+outliers_2std = outliers_2std[['Week', 'mean', 'std', 'Upper Control Limit (2std)', 'Lower Control Limit (2std)',
+                               'Variation (2std)', 'Date', 'Complaints', 'Department', 'Outlier? 2std']]
+outliers_3std = outliers_3std[['Week', 'mean', 'std', 'Upper Control Limit (3std)', 'Lower Control Limit (3std)',
+                               'Variation (3std)', 'Date', 'Complaints', 'Department', 'Outlier? 3std']]
+
+with pd.ExcelWriter('2021Week20 - Output.xlsx') as writer:
+    outliers_1std.to_excel(writer, sheet_name='1 std', index=False)
+    outliers_2std.to_excel(writer, sheet_name='2 std', index=False)
+    outliers_3std.to_excel(writer, sheet_name='3 std', index=False)
