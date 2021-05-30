@@ -1,0 +1,56 @@
+# challenge link: https://preppindata.blogspot.com/2021/05/2021-week-21-getting-trolleyed.html
+
+import pandas as pd
+import numpy as np
+
+# Input data & bring sheets together
+df = pd.concat(pd.read_excel('PD 2021 Wk 21 Input.xlsx', sheet_name = None), ignore_index=False)
+
+for i in sheet_names:
+    df.loc[i, 'Month'] = i
+df = df.droplevel(level=0)
+
+# Use the Day of Month and Table Names (sheet name in other tools) to form a date field for the purchase called 'Date'
+df['Month'] = df['Month'].apply(lambda x: x.split(' ')[1].zfill(2))
+df['Day of Month'] = df['Day of Month'].apply(lambda x: str(x).zfill(2))
+
+df['raw date'] = '2021' + df['Day of Month'] + df['Month']
+df['Date'] = pd.to_datetime(df['raw date'], format='%Y%d%m')
+df.drop(['raw date'], axis=1, inplace=True)
+
+# Create 'New Trolley Inventory?' field to show whether the purchase was made on or after 1st June 2021
+# (the first date with the revised inventory after the project closed)
+df.loc[df['Date'] >= '2021-06-01', 'New Trolley Inventory?'] = True
+df.loc[df['Date'] < '2021-06-01', 'New Trolley Inventory?'] = False
+
+# Remove lots of the detail of the product name:
+    # Only return any names before the '-' (hyphen)
+    # If a product doesn't have a hyphen return the full product name
+    
+df['Product'] = df['Product'].apply(lambda x: x.split('-')[0].strip())
+
+# Make price a numeric field
+df['Price'] = df['Price'].apply(lambda x: float(x.replace('$','')))
+
+# Work out the average selling price per product
+avgprice_per_product = df.groupby('Product', as_index=False)['Price'].agg({'Average Price per Product':'mean'})
+
+# Workout the Variance (difference) between the selling price and the average selling price
+df = df.merge(avgprice_per_product, on='Product')
+df['Variance'] = df['Price'] - df['Average Price per Product']
+
+# Rank the Variances (1 being the largest positive variance) per destination
+# and whether the product was sold before or after the new trolley inventory project delivery
+df['Destination'] = df['Destination'].str.strip()
+df['Variance Rank by Destination'] = df.groupby(['Destination', 'New Trolley Inventory?'], as_index=False)['Variance'].rank(ascending=False).astype(int)
+
+# Return only ranks 1-5
+df = df[df['Variance Rank by Destination'] <= 5].sort_values(by=['Destination', 'New Trolley Inventory?', 'Variance Rank by Destination'])
+
+df = df[['New Trolley Inventory?', 'Variance Rank by Destination', 'Variance', 'Average Price per Product',
+        'Date', 'Product', 'first_name', 'last_name', 'email', 'Price', 'Destination']]
+
+df.columns = ['New Trolley Inventory?', 'Variance Rank by Destination', 'Variance', 'Average Price per Product',
+              'Date', 'Product', 'First Name', 'Last Name', 'Email', 'Price', 'Destination']
+
+df.to_excel('2021Week21 - Output.xlsx', index=False)
