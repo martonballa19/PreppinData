@@ -1,0 +1,34 @@
+# link to the challenge: https://preppindata.blogspot.com/2021/06/2021-week-22-answer-smash.html
+
+import pandas as pd
+import numpy as np
+
+# Input data
+path = 'Answer Smash Input.xlsx'
+answer_smash = pd.read_excel(path, sheet_name='Answer Smash')
+names = pd.read_excel(path, sheet_name='Names')
+questions = pd.read_excel(path, sheet_name='Questions')
+category = pd.read_excel(path, sheet_name='Category')
+
+# Clean category so that Category and Answer are 2 separate fields
+category[['Category', 'Answer']] = category['Category: Answer'].str.split(':', expand=True)
+category.drop('Category: Answer', axis=1, inplace=True)
+category['Answer'] = category['Answer'].str.strip()
+
+# Join the datasets together
+# First questions with answer_smash
+questions = questions.merge(answer_smash, on='Q No')
+
+# Then questions with names
+names['Q No'] = np.arange(1,21)
+questions = questions.merge(names, on='Q No')
+
+# Finally questions with category
+m = category['Answer'].apply(lambda x: questions['Answer Smash'].str.lower().str.contains(x.lower()))
+mask = m.stack().rename_axis(['index1', 'index2'])
+mask = mask[mask].index.to_frame(False)
+output = mask.merge(questions, left_on='index2', right_index=True).merge(category, left_on='index1', right_index=True)
+
+# Remove unnecessary columns
+output = output[['Q No', 'Name', 'Question', 'Answer', 'Answer Smash']].sort_values(by='Q No').reset_index(drop=True)
+output.to_excel('2021W22 - Output.xlsx', index=False)
