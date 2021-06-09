@@ -1,0 +1,59 @@
+# url: https://preppindata.blogspot.com/2021/06/2021-week-23-nps-for-airlines.html
+
+import pandas as pd
+import numpy as np
+
+# Combine Prep Air dataset with other airlines
+
+airlines = pd.read_excel('NPS Input.xlsx', sheet_name='Airlines')
+prepair= pd.read_excel('NPS Input.xlsx', sheet_name='Prep Air')
+
+df = pd.concat([airlines, prepair])
+
+# Exclude any airlines who have had less than 50 customers respond
+
+air_filter = df.groupby('Airline', as_index=False)['CustomerID'].count()
+air_filter = air_filter[air_filter['CustomerID'] >= 50]['Airline']
+df = df[df['Airline'].isin(air_filter)]
+
+# Classify customer responses to the question in the following way:
+    #0-6 = Detractors
+    #7-8 = Passive
+    #9-10 = Promoters
+    
+df.columns = ['Airline', 'CustomerID', 'Rating']
+df.loc[df['Rating'] < 7, 'Response'] = 'Detractors'
+df.loc[((df['Rating'] > 6) & (df['Rating'] < 9)), 'Response'] = 'Passive'
+df.loc[df['Rating'] > 8, 'Response'] = 'Promoters'
+
+# Calculate the NPS for each airline:
+    # NPS = % Promoters - % Detractors
+    
+airline_grp = df.groupby(['Airline', 'Response'], as_index=False)['CustomerID'].count()
+airlines_pivot = pd.pivot_table(airline_grp, index = 'Airline',columns='Response', values='CustomerID')
+
+airline_responds = df['Airline'].value_counts()
+
+airlines = pd.concat([airlines_pivot, airline_responds], axis=1).reset_index()
+airlines.columns = ['Airline', 'Detractors', 'Passive', 'Promoters', 'Responses']
+
+airlines['Detractors %'] = (airlines['Detractors']/airlines['Responses'])*100
+airlines['Promoters %'] = (airlines['Promoters']/airlines['Responses'])*100
+airlines['NPS'] = (airlines['Promoters %'] - airlines['Detractors %']).round()
+
+# Calculate the average and standard deviation of the dataset
+
+mean = airlines['NPS'].mean()
+std = airlines['NPS'].std()
+
+# Take each airline's NPS and subtract the average, then divide this by the standard deviation
+
+airlines['Z-Score'] = airlines['NPS'].apply(lambda x: (x-mean)/std).round(2)
+
+# Filter to just show Prep Air's NPS along with their Z-Score
+
+output = airlines[airlines['Airline'] == 'Prep Air'][['Airline', 'NPS', 'Z-Score']].reset_index()
+
+# Output the data
+
+output.to_excel('2021W23 - output.xlsx', index=False)
