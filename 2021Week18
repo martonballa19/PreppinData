@@ -1,0 +1,37 @@
+# https://preppindata.blogspot.com/2021/05/2021-week-18-prep-air-project-overruns.html
+
+
+import pandas as pd
+
+df = pd.read_excel('PD 2021 Wk 18 Input.xlsx')
+
+# Workout the 'Completed Date' by adding on how many days it took to complete each task from the Scheduled Date
+df['Completed Date'] = df['Scheduled Date'] + pd.to_timedelta(df['Completed In Days from Scheduled Date'], 'day')
+
+# Rename 'Completed In Days from Schedule Date' to 'Days Difference to Schedule'
+df.rename(columns={'Completed In Days from Scheduled Date':'Days Difference to Schedule'}, inplace=True)
+
+# Pivot Task to become column headers with the Completed Date as the values in the column
+df1 = df[['Project', 'Sub-project', 'Task', 'Owner', 'Completed Date']]
+df1 = df1.pivot_table(index=['Project', 'Sub-project', 'Owner'], columns='Task', values='Completed Date', aggfunc='max').reset_index()
+
+# Calculate the difference between Scope to Build time
+df1['Scope to Build'] = df1['Build'] - df1['Scope']
+
+# Calculate the difference between Build to Delivery time
+df1['Build to Delivery'] = df1['Deliver'] - df1['Build']
+
+# Pivot the Build, Deliver and Scope column to re-create the 'Completed Dates' field and Task field
+df1 = pd.melt(df1, id_vars=['Project', 'Sub-project', 'Owner', 'Scope to Build', 'Build to Delivery'], value_name='Completed Date')
+
+# Join Branch 1 and Branch 2 back togetherfinal_df = df.merge(df1, on=['Project', 'Sub-project', 'Owner', 'Task', 'Completed Date'])
+
+# Calculate which weekday each task got completed on 
+# as we want to know whether these are during the weekend or not for the dashboard
+final_df['Completed Weekday'] = final_df['Completed Date'].dt.day_name()
+
+# Clean up the data set to remove any fields that are not required.
+final_df = final_df[['Completed Weekday', 'Task', 'Scope to Build', 'Build to Delivery', 'Days Difference to Schedule',
+                     'Project', 'Sub-project', 'Owner', 'Scheduled Date', 'Completed Date']]
+
+final_df.to_excel('2021W18 - Output.xlsx', index=False)
