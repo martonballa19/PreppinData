@@ -1,0 +1,35 @@
+# url: https://preppindata.blogspot.com/2021/07/2021-week-30-lift-your-spirits.html
+
+import pandas as pd
+
+df = pd.read_csv('2021W30.csv')
+
+# Create a TripID field based on the time of day
+df['Hour'] = df['Hour'].astype(str).str.zfill(2)
+df['Minute'] = df['Minute'].astype(str).str.zfill(2)
+
+df['TripID'] = pd.to_datetime('2021-07-12' + ' ' + df['Hour'].astype(str) + ':' + df['Minute'].astype(str))
+
+# Calculate how many floors the lift has to travel between trips
+df = df.replace('B', -1).replace('G',0)
+
+df['From'] = df['From'].astype(int)
+df['To'] = df['To'].astype(int)
+
+df['Travel'] = abs(df['From'].shift(-1) - df['To'])
+
+# Calculate which floor the majority of trips begin at
+Default_Position = df['From'].mode()[0]
+
+# If every trip began from the same floor, how many floors would the lift need to travel to begin each journey?
+df['Travel_from_default'] = abs(Default_Position - df['From'])
+
+# How does the average floors travelled between trips compare to the average travel from the default position?
+current_diff = df['Travel'].mean()
+default_diff = df['Travel_from_default'].mean()
+difference = current_diff - default_diff
+
+output = pd.DataFrame([(Default_Position, current_diff, default_diff, difference)], 
+                      columns=('Default position', 'Avg travel currently', 'Avg travel from default position', 'Difference'))
+
+output.to_excel('2021W30 - Output.xlsx', index=False)
