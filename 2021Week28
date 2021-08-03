@@ -1,0 +1,88 @@
+import pandas as pd
+
+wc = pd.read_excel('InternationalPenalties.xlsx', sheet_name='WorldCup')
+euros = pd.read_excel('InternationalPenalties.xlsx', sheet_name='Euros')
+
+# Determine what competition each penalty was taken in
+wc['competition'] = 'World Cup ' + wc['Event Year'].astype(str) + ' ' + wc['Round'].astype(str)
+euros['competition'] = 'Euros ' + euros['Event Year'].astype(str) + ' ' + euros['Round'].astype(str)
+
+# Clean any fields, correctly format the date the penalty was taken,
+# group the two German countries (eg, West Germany & Germany)
+wc = wc.rename(columns={'Penalty Number ':'Penalty Number',
+                        'Losing Team GK':'Losing team GK',
+                        'Winning Team GK':'Winning team GK'})
+
+pens = pd.concat([wc, euros]).reset_index(drop=True)
+
+pens['Event Year'] = pens['Event Year'].str.replace(',','')
+
+pens['Date'] = pd.to_datetime(pens['Event Year'].astype(str) + '/' + pens['Date'].dt.month.astype(str) +
+            '/' + pens['Date'].dt.day.astype(str), format='%Y/%m/%d')
+
+pens['Loser'] = pens['Loser'].str.strip()
+pens['Winner'] = pens['Winner'].str.strip()
+
+pens = pens.replace('West Germany', 'Germany')
+
+# Rank the countries on the following: 
+    # Shootout win % (exclude teams who have never won a shootout)
+    # Penalties scored %
+    
+pens['Winning team scored'] = pens['Winning team Taker'].str.contains(' scored')
+pens['Losing team scored'] = pens['Losing team Taker'].str.contains(' scored')
+
+winners = pens[['Winner', 'competition']].drop_duplicates()
+losers = pens[['Loser', 'competition']].drop_duplicates()
+
+winners['Result'] = 1
+losers['Result'] = 0
+
+winners = winners.rename(columns={'Winner':'Team'})
+losers= losers.rename(columns={'Loser':'Team'})
+
+shootout = pd.concat([winners,losers])
+shootout['Total shootout'] = 1
+
+shootout = shootout.groupby('Team').agg({'Result':'sum', 'Total shootout':sum}).reset_index()
+
+shootout = shootout[shootout['Result'] > 0]
+
+shootout['Shootout win %'] = shootout['Result']/shootout['Total shootout']
+
+shootout['Rank'] = shootout['Shootout win %'].rank(method='dense', ascending=False)
+shootout = shootout.sort_values(by='Rank', ascending=True)
+
+# Penalties
+
+pens_scored = pens[['Winner', 'Loser', 'competition','Winning team scored','Losing team scored']]
+
+pens_scored = pens_scored.melt(id_vars=['competition', 'Winning team scored', 'Losing team scored'],
+                               value_name='Team', var_name='Win/Lose')
+
+pens_scored['Total Pens'] = 1
+
+pens_scored['Scored Pens'] = pens_scored.apply(lambda x: x['Winning team scored'] if x['Win/Lose'] == 'Winner' else x['Losing team scored'], axis=1)
+
+pens_scored = pens_scored.groupby('Team').agg({'Total Pens':sum, 'Scored Pens':sum}).reset_index()
+pens_scored['Pens scored %'] = pens_scored['Scored Pens'] / pens_scored['Total Pens']
+pens_scored['Rank'] = pens_scored['Pens scored %'].rank(method='dense', ascending=False)
+pens_scored = pens_scored.sort_values(by='Rank', ascending=True)
+
+# What is the most and least successful time to take a penalty? (What penalty number are you most likely to score or miss?)
+
+pen_number = pens[['Penalty Number', 'Winning team scored', 'Losing team scored']]
+
+pen_number = pen_number.melt(id_vars=['Penalty Number'], value_name='Score')
+pen_number['Total pens'] = 1
+pen_number = pen_number.groupby('Penalty Number').agg({'Score':sum, 'Total pens':sum}).reset_index()
+pen_number['Penalty Number %'] = pen_number['Score']/pen_number['Total pens']
+pen_number['Rank'] = pen_number['Penalty Number %'].rank(method='dense', ascending=False)
+pen_number = pen_number.sort_values(by='Rank', ascending=True)
+
+# Output the Data
+
+with pd.ExcelWriter('2021W28 - Output.xlsx') as writer:  
+    shootout.to_excel(writer, sheet_name='Win %', index=False)
+    pens_scored.to_excel(writer, sheet_name='Penalties Scored %', index=False)
+    pen_number.to_excel(writer, sheet_name='Score %', index=False)
